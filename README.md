@@ -1,2 +1,2 @@
 # ferver
-Repository for the Ferver Friend Discorb bot
+Repository for the Ferver Friend Discord bot
