@@ -156,7 +156,22 @@ app.post(
             return res.send({
               type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
               data: {
-                content: `✅ Event created!\n• **${eventData.name}**\n• Location: ${values.event_location}\n• Starts: ${eventData.scheduled_start_time}`,
+                embeds: [
+                  {
+                    title: eventData.name,
+                    fields: [
+                      {
+                        name: 'Location',
+                        value: values.event_location,
+                      },
+                      {
+                        name: 'Start Time',
+                        value: eventData.scheduled_start_time,
+                      }
+                    ],
+                    color: 0x1F80D7,
+                  }
+                ]
               },
             });
           } catch (err) {
