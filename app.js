@@ -64,8 +64,8 @@ function getCreateEventModal() {
               type: MessageComponentTypes.INPUT_TEXT,
               custom_id: 'event_time',
               style: 1,
-              label: 'Time (UTC HH:MM)',
-              placeholder: '00:00',
+              label: 'Time (ET HH:MM AM/PM)',
+              placeholder: '10:30 AM',
               required: true,
             },
           ],
@@ -75,6 +75,66 @@ function getCreateEventModal() {
   };
 }
 
+function parseEasternDateTime(dateString, timeString) {
+  const dateMatch = /^([0-9]{4})-([0-9]{2})-([0-9]{2})$/.exec(dateString);
+  const timeMatch = /^([1-9]|1[0-2]):([0-5][0-9])\s*(AM|PM)$/i.exec(timeString.trim());
+  if (!dateMatch || !timeMatch) return null;
+
+  const year = Number(dateMatch[1]);
+  const month = Number(dateMatch[2]);
+  const day = Number(dateMatch[3]);
+  let hour = Number(timeMatch[1]);
+  const minute = Number(timeMatch[2]);
+  const period = timeMatch[3].toUpperCase();
+
+  if (period === 'PM' && hour !== 12) {
+    hour += 12;
+  } else if (period === 'AM' && hour === 12) {
+    hour = 0;
+  }
+
+  const offsetMillis = getEasternOffsetMillis(year, month, day);
+  if (offsetMillis === null) return null;
+
+  const utcMillis = Date.UTC(year, month - 1, day, hour, minute) - offsetMillis;
+  return new Date(utcMillis);
+}
+
+function getEasternOffsetMillis(year, month, day) {
+  const sampleUtc = Date.UTC(year, month - 1, day, 12, 0, 0);
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZoneName: 'shortOffset',
+  });
+
+  const parts = formatter.formatToParts(new Date(sampleUtc));
+  const offsetPart = parts.find((part) => part.type === 'timeZoneName');
+  if (!offsetPart) return null;
+
+  const offsetMatch = /^GMT([+-]\d{1,2})(?::?(\d{2}))?$/.exec(offsetPart.value);
+  if (!offsetMatch) return null;
+
+  const sign = offsetMatch[1].startsWith('-') ? -1 : 1;
+  const hours = Math.abs(Number(offsetMatch[1]));
+  const minutes = offsetMatch[2] ? Number(offsetMatch[2]) : 0;
+  return sign * (hours * 60 + minutes) * 60_000;
+}
+
+function formatEasternTime(date) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date) + ' ET';
+}
 
 app.post(
   '/interactions',
@@ -120,13 +180,13 @@ app.post(
             values[input.custom_id] = input.value;
           }
 
-          const eventDateTime = `${values.event_date}T${values.event_time}:00.000Z`;
-          if (Number.isNaN(Date.parse(eventDateTime))) {
+          const startTime = parseEasternDateTime(values.event_date, values.event_time);
+          if (!startTime || Number.isNaN(startTime.getTime())) {
             return res.send({
               type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
               data: {
                 flags: 64,
-                content: 'Invalid date/time format. Use YYYY-MM-DD for date and HH:MM for time.',
+                content: 'Invalid date/time format. Use YYYY-MM-DD for date and HH:MM AM/PM for Eastern time.',
               },
             });
           }
@@ -134,8 +194,6 @@ app.post(
           if (!guildId) {
             return res.status(400).json({ error: 'Guild ID required to create events.' });
           }
-
-          const startTime = new Date(eventDateTime);
           const eventBody = {
             name: values.event_title,
             scheduled_start_time: startTime.toISOString(),
@@ -159,14 +217,17 @@ app.post(
                 embeds: [
                   {
                     title: eventData.name,
+                    description: values.event_location,
                     fields: [
                       {
-                        name: 'Location',
-                        value: values.event_location,
+                        name: 'Date',
+                        value: values.event_date,
+                        inline: true,
                       },
                       {
-                        name: 'Start Time',
-                        value: eventData.scheduled_start_time,
+                        name: 'Call Time',
+                        value: formatEasternTime(startTime),
+                        inline: true
                       }
                     ],
                     color: 0x1F80D7,
