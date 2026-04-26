@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { getRPSChoices } from './game.js';
-import { capitalize, InstallGlobalCommands } from './utils.js';
+import { capitalize, InstallGlobalCommands, InstallGuildCommands } from './utils.js';
 
 // Get the game choices from game.js
 function createCommandChoices() {
@@ -44,6 +44,21 @@ const CHALLENGE_COMMAND = {
   contexts: [0, 2],
 };
 
-const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND];
+// Create event via interactive modal + select menus
+const CREATE_EVENT_COMMAND = {
+  name: 'create-event',
+  description: 'Create a band event with a channel, members, and scheduled event',
+  type: 1,
+  integration_types: [0, 1],
+  contexts: [0, 1, 2],
+};
 
-InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
+const ALL_COMMANDS = [TEST_COMMAND, CHALLENGE_COMMAND, CREATE_EVENT_COMMAND];
+
+const guildId = process.env.GUILD_ID;
+
+if (guildId) {
+  InstallGuildCommands(process.env.APP_ID, guildId, ALL_COMMANDS);
+} else {
+  InstallGlobalCommands(process.env.APP_ID, ALL_COMMANDS);
+}
