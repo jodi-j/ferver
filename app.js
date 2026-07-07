@@ -120,8 +120,10 @@ app.post(
             values[input.custom_id] = input.value;
           }
 
-          const eventDateTime = `${values.event_date}T${values.event_time}:00.000Z`;
-          if (Number.isNaN(Date.parse(eventDateTime))) {
+          const eventDateTime = `${values.event_date}T${values.event_time}:00Z`;
+          const startTime = new Date(eventDateTime);
+          
+          if (Number.isNaN(startTime.getTime())) {
             return res.send({
               type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
               data: {
@@ -131,11 +133,21 @@ app.post(
             });
           }
 
+          // Validate event is in the future
+          if (startTime <= new Date()) {
+            return res.send({
+              type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+              data: {
+                flags: 64,
+                content: `❌ Event time must be in the future. You submitted: ${eventDateTime} (UTC)\n\nCurrent time: ${new Date().toISOString()}`,
+              },
+            });
+          }
+
           if (!guildId) {
             return res.status(400).json({ error: 'Guild ID required to create events.' });
           }
 
-          const startTime = new Date(eventDateTime);
           const eventBody = {
             name: values.event_title,
             scheduled_start_time: startTime.toISOString(),
@@ -147,11 +159,37 @@ app.post(
           };
 
           try {
+            // Step 1: Create the Discord event
             const eventRes = await DiscordRequest(`guilds/${guildId}/scheduled-events`, {
               method: 'POST',
               body: eventBody,
             });
             const eventData = await eventRes.json();
+            const eventUrl = `https://discord.com/events/${guildId}/${eventData.id}`;
+
+            // Step 2: Post discussion to #all-events forum channel
+            const eventsChannelId = process.env.EVENTS_CHANNEL_ID;
+            if (eventsChannelId) {
+              const discussionContent = `📅 **${values.event_title}**\n\n📍 Location: ${values.event_location}\n🕐 Time: ${values.event_date} at ${values.event_time} UTC\n\n[Join Event](${eventUrl})`;
+
+              try {
+                const threadRes = await DiscordRequest(`channels/${eventsChannelId}/threads`, {
+                  method: 'POST',
+                  body: {
+                    name: values.event_title,
+                    auto_archive_duration: 10080,
+                    type: 11, // GUILD_PUBLIC_THREAD
+                    message: {
+                      content: discussionContent,
+                    },
+                  },
+                });
+                const threadData = await threadRes.json();
+                console.log('Forum post created:', threadData);
+              } catch (forumErr) {
+                console.error('Failed to create forum post:', forumErr);
+              }
+            }
 
             return res.send({
               type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
