@@ -11,6 +11,45 @@ import { DiscordRequest } from './utils.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+function formatMentionableValues(selectedValues = [], resolved = {}) {
+  if (!Array.isArray(selectedValues) || selectedValues.length === 0) {
+    return '';
+  }
+
+  return selectedValues
+    .map((id) => {
+      if (resolved.users?.[id]) return `<@${id}>`;
+      if (resolved.roles?.[id]) return `<@&${id}>`;
+      return id;
+    })
+    .join(' ');
+}
+
+function collectModalValues(components = []) {
+  const values = {};
+
+  for (const component of components) {
+    if (component?.type === MessageComponentTypes.ACTION_ROW) {
+      const input = component.components?.[0];
+      if (input?.custom_id) {
+        values[input.custom_id] = input.value ?? '';
+      }
+      continue;
+    }
+
+    if (component?.type === 18 && component.component?.custom_id) {
+      const child = component.component;
+      if (child.type === MessageComponentTypes.MENTIONABLE_SELECT) {
+        values[child.custom_id] = child.values ?? [];
+      } else if (child.type === MessageComponentTypes.INPUT_TEXT) {
+        values[child.custom_id] = child.value ?? '';
+      }
+    }
+  }
+
+  return values;
+}
+
 function getCreateEventModal() {
   return {
     type: InteractionResponseType.MODAL,
@@ -30,6 +69,18 @@ function getCreateEventModal() {
               required: true,
             },
           ],
+        },
+        {
+          type: 18,
+          label: 'Band',
+          component: {
+            type: MessageComponentTypes.MENTIONABLE_SELECT,
+            custom_id: 'event_band',
+            placeholder: 'Select band members',
+            min_values: 1,
+            max_values: 25,
+            required: true,
+          },
         },
         {
           type: MessageComponentTypes.ACTION_ROW,
@@ -114,13 +165,11 @@ app.post(
         const modalId = data.custom_id;
 
         if (modalId === 'create_event_modal') {
-          const values = {};
-          for (const action of data.components) {
-            const input = action.components[0];
-            values[input.custom_id] = input.value;
-          }
+          const values = collectModalValues(data.components);
+          console.log('Modal submitted:', values);
 
           const eventDateTime = `${values.event_date}T${values.event_time}:00Z`;
+          const mentionText = formatMentionableValues(values.event_band, data.resolved || {});
           const startTime = new Date(eventDateTime);
           
           if (Number.isNaN(startTime.getTime())) {
@@ -170,7 +219,8 @@ app.post(
             // Step 2: Post discussion to #all-events forum channel
             const eventsChannelId = process.env.EVENTS_CHANNEL_ID;
             if (eventsChannelId) {
-              const discussionContent = `📅 **${values.event_title}**\n\n📍 Location: ${values.event_location}\n🕐 Time: ${values.event_date} at ${values.event_time} UTC\n\n[Join Event](${eventUrl})`;
+              const discussionContent = 
+                `📅 **${values.event_title}**\n\n ${mentionText ? `🎵 Band: ${mentionText}\n` : ''} 📍 Location: ${values.event_location}\n🕐 Time: ${values.event_date} at ${values.event_time} UTC\n\n [Join Service](${eventUrl})`;
 
               try {
                 const threadRes = await DiscordRequest(`channels/${eventsChannelId}/threads`, {
@@ -194,7 +244,7 @@ app.post(
             return res.send({
               type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
               data: {
-                content: `✅ Event created!\n• **${eventData.name}**\n• Location: ${values.event_location}\n• Starts: ${eventData.scheduled_start_time}`,
+                content: `✅ Event created!\n• **${eventData.name}**\n• Location: ${values.event_location}\n• Starts: ${eventData.scheduled_start_time}${mentionText ? `\n• Band: ${mentionText}` : ''}`,
               },
             });
           } catch (err) {
