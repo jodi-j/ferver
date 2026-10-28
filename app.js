@@ -462,6 +462,8 @@ app.post(
   }
 );
 
+app.get('/', (req, res) => res.send('ok'));
+
 app.listen(PORT, () => {
   console.log(`Listening on port ${PORT}`);
 });
