@@ -52,6 +52,16 @@ function collectModalValues(components = []) {
 
 const pendingEventDrafts = new Map();
 
+const ADMINISTRATOR = 0x8n;
+
+function isAdmin(member) {
+  try {
+    return (BigInt(member?.permissions ?? 0) & ADMINISTRATOR) === ADMINISTRATOR;
+  } catch {
+    return false;
+  }
+}
+
 const EASTERN_TZ = 'America/New_York';
 
 function getTimeZoneOffsetMs(date, timeZone) {
@@ -79,11 +89,11 @@ function getTimeZoneOffsetMs(date, timeZone) {
 // Takes "YYYY-MM-DD" and a 12-hour time like "6:30 PM" (or "6:30pm", "6 PM")
 // as Eastern time (EST/EDT handled automatically). Returns a Date, or null if invalid.
 function parseEasternDateTime(dateStr, timeStr) {
-  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec((dateStr ?? '').trim());
+  const dm = /^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/.exec((dateStr ?? '').trim());
   const tm = /^(\d{1,2})(?::(\d{2}))?\s*([AaPp])\.?\s*[Mm]\.?$/.exec((timeStr ?? '').trim());
   if (!dm || !tm) return null;
 
-  const [, y, mo, d] = dm.map(Number);
+  const [, mo, d, y] = dm.map(Number);
   let h = Number(tm[1]);
   const mi = Number(tm[2] ?? 0);
   const meridiem = tm[3].toLowerCase();
@@ -155,7 +165,7 @@ function getCreateEventModal() {
           },
         },
         textInputLabel('Location', 'event_location', 'Location'),
-        textInputLabel('Date (YYYY-MM-DD)', 'event_date', 'YYYY-MM-DD'),
+        textInputLabel('Date (MM-DD-YYYY)', 'event_date', 'MM-DD-YYYY'),
         textInputLabel('Time (Eastern, e.g. 6:30 PM)', 'event_time', '6:30 PM'),
       ],
     },
@@ -169,7 +179,7 @@ function getCreateRehearsalModal() {
       custom_id: 'create_rehearsal_modal',
       title: 'Add Rehearsal Details',
       components: [
-        textInputLabel('Rehearsal Date (YYYY-MM-DD)', 'rehearsal_date', 'YYYY-MM-DD'),
+        textInputLabel('Rehearsal Date (MM-DD-YYYY)', 'rehearsal_date', 'MM-DD-YYYY'),
         textInputLabel('Rehearsal Location', 'rehearsal_location', 'Location'),
         textInputLabel('Rehearsal Time (Eastern, e.g. 6:30 PM)', 'rehearsal_time', '6:30 PM'),
       ],
@@ -195,14 +205,34 @@ app.post(
           body: { content },
         });
 
-      if (type === InteractionType.PING) {
-        return res.send({ type: InteractionResponseType.PONG });
-      }
+      const deleteOriginal = (interactionToken) =>
+        DiscordRequest(`webhooks/${applicationId}/${interactionToken}/messages/@original`, {
+          method: 'DELETE',
+        });
+
+      const followup = async (content) => {
+        const r = await DiscordRequest(`webhooks/${applicationId}/${token}?wait=true`, {
+          method: 'POST',
+          body: { content, flags: 64 },
+        });
+        return r.json();
+      };
+
+      const deleteFollowup = (messageId) =>
+        DiscordRequest(`webhooks/${applicationId}/${token}/messages/${messageId}`, {
+          method: 'DELETE',
+        });
 
       if (type === InteractionType.APPLICATION_COMMAND) {
         const { name } = data;
 
         if (name === 'create-event') {
+          if (!isAdmin(member)) {
+            return res.send({
+              type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+              data: { flags: 64, content: 'Only admins can create events.' },
+            });
+          }
           return res.send(getCreateEventModal());
         }
 
@@ -221,6 +251,16 @@ app.post(
         if (data.custom_id === 'open_rehearsal_modal') {
           return res.send(getCreateRehearsalModal());
         }
+
+        if (data.custom_id === 'open_create_event_modal') {
+          if (!isAdmin(member)) {
+            return res.send({
+              type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+              data: { flags: 64, content: 'Only admins can create events.' },
+            });
+          }
+          return res.send(getCreateEventModal());
+        }
       }
 
       if (type === InteractionType.MODAL_SUBMIT) {
@@ -235,7 +275,7 @@ app.post(
               type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
               data: {
                 flags: 64,
-                content: 'Invalid event date/time. Use YYYY-MM-DD for the date and a time like 6:30 PM (Eastern).',
+                content: 'Invalid event date/time. Use MM-DD-YYYY for the date and a time like 6:30 PM (Eastern).',
               },
             });
           }
@@ -254,6 +294,7 @@ app.post(
           pendingEventDrafts.set(draftKey, {
             ...values,
             event_band_resolved: data.resolved || {},
+            prompt_token: token,
           });
 
           return res.send({
@@ -298,7 +339,7 @@ app.post(
           if (!eventStartTime || !rehearsalStartTime) {
             return res.send({
               type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-              data: { flags: 64, content: 'Invalid date/time. Use YYYY-MM-DD for the date and a time like 6:30 PM (Eastern).' },
+              data: { flags: 64, content: 'Invalid date/time. Use MM-DD-YYYY for the date and a time like 6:30 PM (Eastern).' },
             });
           }
 
@@ -323,7 +364,7 @@ app.post(
             });
           }
 
-          res.send({ type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE });
+          res.send({ type: 6 });
 
           try {
             const eventRes = await DiscordRequest(`guilds/${guildId}/scheduled-events`, {
@@ -343,7 +384,7 @@ app.post(
             const rehearsalRes = await DiscordRequest(`guilds/${guildId}/scheduled-events`, {
               method: 'POST',
               body: {
-                name: `${fullValues.event_title} Rehearsal`,
+                name: `Rehearsal | ${fullValues.event_title}`,
                 scheduled_start_time: rehearsalStartTime.toISOString(),
                 scheduled_end_time: new Date(rehearsalStartTime.getTime() + 60 * 60 * 1000).toISOString(),
                 privacy_level: 2,
@@ -357,15 +398,15 @@ app.post(
             const eventsChannelId = process.env.EVENTS_CHANNEL_ID;
             if (eventsChannelId) {
               const discussionContent = [
-                `Band: ${mentionText}`,
-                `Location: ${fullValues.event_location}`,
-                `Call Time: ${formatEasternDate(eventStartTime)} at ${formatEasternTime(eventStartTime)}`,
+                `**Band**: ${mentionText}`,
+                `**Location**: ${fullValues.event_location}`,
+                `**Call Time**: ${formatEasternDate(eventStartTime)} at ${formatEasternTime(eventStartTime)}`,
                 '',
-                `Rehearsal Date: ${formatEasternDate(rehearsalStartTime)}`,
-                `Rehearsal Location: ${fullValues.rehearsal_location}`,
-                `Rehearsal Time: ${formatEasternTime(rehearsalStartTime)}`,
+                `**Rehearsal Date**: ${formatEasternDate(rehearsalStartTime)}`,
+                `**Rehearsal Location**: ${fullValues.rehearsal_location}`,
+                `**Rehearsal Time**: ${formatEasternTime(rehearsalStartTime)}`,
                 '',
-                `Service[Link](${eventUrl}) | Rehearsal[Link](${rehearsalUrl})`,
+                `[Service](${eventUrl}) | [Rehearsal](${rehearsalUrl})`,
               ].join('\n');
 
               try {
@@ -384,13 +425,25 @@ app.post(
 
             pendingEventDrafts.delete(draftKey);
 
-            await editOriginal(
+            try {
+              await deleteOriginal(token);
+            } catch (delErr) {
+              console.error('Could not delete prompt message:', delErr.message);
+            }
+
+            const successMsg = await followup(
               `✅ Event created!\n• **${eventData.name}**\n• Event link: ${eventUrl}\n• Rehearsal: ${rehearsalData.name}\n• Rehearsal link: ${rehearsalUrl}`
             );
+
+            setTimeout(() => {
+              deleteFollowup(successMsg.id).catch((delErr) =>
+                console.error('Could not delete success message:', delErr.message)
+              );
+            }, 10_000);
           } catch (err) {
             console.error(err);
             try {
-              await editOriginal(`Failed to create event: ${err.message}`);
+              await followup(`Failed to create event: ${err.message}`);
             } catch (patchErr) {
               console.error('Failed to send error followup:', patchErr);
             }

@@ -17,6 +17,7 @@ const CREATE_EVENT_COMMAND = {
   type: 1,
   integration_types: [0, 1],
   contexts: [0, 1, 2],
+  default_member_permissions: '8',
 };
 
 const ALL_COMMANDS = [TEST_COMMAND, CREATE_EVENT_COMMAND];
