@@ -1,107 +1,42 @@
-# Getting Started app for Discord
+# Ferver Bot
 
-This project contains a basic rock-paper-scissors-style Discord app written in JavaScript, built for the [getting started guide](https://discord.com/developers/docs/getting-started).
+Welcome to the tutorial for the Ferver server bot. This bot is used to create events and rehearsals smoothly.
 
-![Demo of app](https://github.com/discord/discord-example-app/raw/main/assets/getting-started-demo.gif?raw=true)
+## How To Use
+There are two ways to use the Ferver bot to create an event: the `#create-event` channel, or the `/create-event` slash command.
 
-## Project structure
-Below is a basic overview of the project structure:
+### The `#create-event` Channel
+The simplest way to create an event is by clicking a button in the create event channel. 
 
-```
-├── examples    -> short, feature-specific sample apps
-│   ├── app.js  -> finished app.js code
-│   ├── button.js
-│   ├── command.js
-│   ├── modal.js
-│   ├── selectMenu.js
-├── .env.sample -> sample .env file
-├── app.js      -> main entrypoint for app
-├── commands.js -> slash command payloads + helpers
-├── utils.js    -> utility functions and enums
-├── package.json
-├── README.md
-└── .gitignore
-```
+![Create Event in Channel](assets/image.png)
 
-## Running app locally
+Clicking this button will trigger the modal flow. Simply click on the button, and the Ferver bot will start the flow.
 
-Before you start, you'll need to install [NodeJS](https://nodejs.org/en/download/) and [create a Discord app](https://discord.com/developers/applications) with the proper permissions:
-- `applications.commands`
-- `bot` (with Send Messages enabled)
+### The `/create-event` Slash Command
+The `/create-event` slash command can be used in any channel. Simply type `/create-event` in any channel and hit send, and the Ferver bot will start the flow.
 
 
-Configuring the app is covered in detail in the [getting started guide](https://discord.com/developers/docs/getting-started).
+## How It Works
+Upon invocation, the Ferver bot opens to form to fill out the event details. This includes the event title, location, date, and time. You can also select the band members based on members in the server. 
 
-### Setup project
+![Event Form](assets/image-2.png)
 
-First clone the project:
-```
-git clone https://github.com/discord/discord-example-app.git
-```
+After you click "Submit", the event details will be saved and the bot will send you a message to add the rehearsal details. 
 
-Then navigate to its directory and install dependencies:
-```
-cd discord-example-app
-npm install
-```
-### Get app credentials
+![Rehearsal Message](assets/image-3.png)
 
-Fetch the credentials from your app's settings and add them to a `.env` file (see `.env.sample` for an example). You'll need your app ID (`APP_ID`), bot token (`DISCORD_TOKEN`), and public key (`PUBLIC_KEY`).
+Click the "Add rehearsal details" button. This button will open another form to fill out the rehearsal details. This includes the rehearsal date, location, and time. 
 
-Fetching credentials is covered in detail in the [getting started guide](https://discord.com/developers/docs/getting-started).
+![Rehearsal Form](assets/image-4.png)
 
-> 🔑 Environment variables can be added to the `.env` file in Glitch or when developing locally, and in the Secrets tab in Replit (the lock icon on the left).
+After you click submit, a message will be sent to confirm that the event has been created properly. This message will delete after 10 seconds to reduce clutter. 
 
-### Install slash commands
+![Confirmation Message](assets/image-5.png)
 
-The commands for the example app are set up in `commands.js`. All of the commands in the `ALL_COMMANDS` array at the bottom of `commands.js` will be installed when you run the `register` command configured in `package.json`:
+Then, the Ferver bot does the work from there! It creates a post in the `#all-events` channel with the form information. It also creates two Discord events for the event and rehearsal that users can click to indicate their interest. 
 
-```
-npm run register
-```
+![Forum Post](assets/image-6.png)
 
-### Run the app
+![Discord Events](assets/image-7.png)
 
-After your credentials are added, go ahead and run the app:
-
-```
-node app.js
-```
-
-> ⚙️ A package [like `nodemon`](https://github.com/remy/nodemon), which watches for local changes and restarts your app, may be helpful while locally developing.
-
-If you aren't following the [getting started guide](https://discord.com/developers/docs/getting-started), you can move the contents of `examples/app.js` (the finished `app.js` file) to the top-level `app.js`.
-
-### Set up interactivity
-
-The project needs a public endpoint where Discord can send requests. To develop and test locally, you can use something like [`ngrok`](https://ngrok.com/) to tunnel HTTP traffic.
-
-Install ngrok if you haven't already, then start listening on port `3000`:
-
-```
-ngrok http 3000
-```
-
-You should see your connection open:
-
-```
-Tunnel Status                 online
-Version                       2.0/2.0
-Web Interface                 http://127.0.0.1:4040
-Forwarding                    https://1234-someurl.ngrok.io -> localhost:3000
-
-Connections                  ttl     opn     rt1     rt5     p50     p90
-                              0       0       0.00    0.00    0.00    0.00
-```
-
-Copy the forwarding address that starts with `https`, in this case `https://1234-someurl.ngrok.io`, then go to your [app's settings](https://discord.com/developers/applications).
-
-On the **General Information** tab, there will be an **Interactions Endpoint URL**. Paste your ngrok address there, and append `/interactions` to it (`https://1234-someurl.ngrok.io/interactions` in the example).
-
-Click **Save Changes**, and your app should be ready to run 🚀
-
-## Other resources
-- Read **[the documentation](https://discord.com/developers/docs/intro)** for in-depth information about API features.
-- Browse the `examples/` folder in this project for smaller, feature-specific code examples
-- Join the **[Discord Developers server](https://discord.gg/discord-developers)** to ask questions about the API, attend events hosted by the Discord API team, and interact with other devs.
-- Check out **[community resources](https://discord.com/developers/docs/topics/community-resources#community-resources)** for language-specific tools maintained by community members.
+Viola!
